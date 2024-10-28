@@ -28,6 +28,8 @@ export default {
     handleItemClick(item) {
       if (item.type === 'directory') {
         item.expanded = !item.expanded;
+      } else if (!item.file.name.endsWith('.md')) {
+        console.error('The selected file is not a valid markdown file.', item.file);
       } else if (item.file && (item.file instanceof File || item.file instanceof Blob)) {
         this.$emit('file-selected', item.file);
       } else {

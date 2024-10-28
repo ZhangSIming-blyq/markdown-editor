@@ -1,24 +1,21 @@
 <template>
   <div class="editor">
-    <!-- 目录选择 -->
-    <input type="file" webkitdirectory @change="handleFileSelect" />
     <div class="file-list">
+      <input type="file" @change="handleFileUpload" webkitdirectory directory multiple />
       <DirectoryTree :tree="directoryTree" @file-selected="editFile" />
     </div>
     <div class="markdown-editor" v-if="selectedFile">
       <div class="editor-header">
         <h2>Editing: {{ selectedFile.name }}</h2>
-        <button @click="closeFile">Close</button>
+        <button @click="closeEditor">Close</button>
       </div>
-      <div
-        id="editor"
-        contenteditable="true"
-        @input="renderMarkdown"
-        v-html="previewContent"
-        ref="editor"
-      ></div>
+      <textarea
+        v-model="fileContent"
+        ref="textArea"
+        @input="autoSave"
+      ></textarea>
     </div>
-    <div class="markdown-editor" v-else>
+    <div v-else class="markdown-editor">
       <h2>Select a file to edit</h2>
     </div>
   </div>
@@ -26,73 +23,76 @@
 
 <script>
 import DirectoryTree from './DirectoryTree.vue';
-import markdownit from 'markdown-it';
 
 export default {
-  components: { DirectoryTree },
+  components: {
+    DirectoryTree,
+  },
   data() {
     return {
       directoryTree: [],
       selectedFile: null,
       fileContent: '',
-      previewContent: '',
-      markdown: markdownit(),
     };
   },
   methods: {
-    handleFileSelect(event) {
-      const files = Array.from(event.target.files).filter(file => file.name.endsWith('.md'));
+    handleFileUpload(event) {
+      const files = Array.from(event.target.files);
       this.directoryTree = this.buildTree(files);
-    },
-    editFile(file) {
-      if (file instanceof File || file instanceof Blob) {
-        this.selectedFile = file;
-        const reader = new FileReader();
-        reader.onload = e => {
-          this.fileContent = e.target.result;
-          this.previewContent = this.markdown.render(this.fileContent);
-        };
-        reader.readAsText(file);
-      } else {
-        console.error("Selected item is not a valid file.");
-      }
     },
     buildTree(files) {
       const tree = [];
-      files.forEach(file => {
-        const parts = file.webkitRelativePath.split('/'); // 使用相对路径
+      files.forEach((file) => {
+        const parts = file.webkitRelativePath.split('/');
         let currentLevel = tree;
         parts.forEach((part, index) => {
-          let existingPath = currentLevel.find(item => item.name === part);
-          if (!existingPath) {
-            existingPath = {
+          const existingPath = currentLevel.find((item) => item.name === part);
+          if (existingPath) {
+            currentLevel = existingPath.children;
+          } else {
+            const newPart = {
               name: part,
               path: parts.slice(0, index + 1).join('/'),
               type: index === parts.length - 1 ? 'file' : 'directory',
               children: [],
               expanded: false,
-              file: index === parts.length - 1 ? file : null // 确保文件对象
+              file: index === parts.length - 1 ? file : null,
             };
-            currentLevel.push(existingPath);
-          }
-          if (existingPath.type === 'directory') {
-            currentLevel = existingPath.children;
+            currentLevel.push(newPart);
+            if (newPart.type === 'directory') {
+              currentLevel = newPart.children;
+            }
           }
         });
       });
       return tree;
     },
-    renderMarkdown() {
-      const editor = this.$refs.editor;
-      this.fileContent = editor.innerText || editor.textContent;
-      this.previewContent = this.markdown.render(this.fileContent);
+    editFile(file) {
+      if (file instanceof File) {
+        this.selectedFile = file;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          this.fileContent = e.target.result;
+        };
+        reader.readAsText(file);
+      } else {
+        console.error('Selected item is not a valid file.');
+      }
     },
-    closeFile() {
+    autoSave() {
+      if (this.selectedFile) {
+        // Only keep the content in memory as a backup for now
+        localStorage.setItem(this.selectedFile.name, this.fileContent);
+      }
+    },
+    closeEditor() {
+      // Attempt to save the latest content back to the original file
+      this.autoSave();  // Save the latest changes to memory/localStorage as a backup
+
       this.selectedFile = null;
       this.fileContent = '';
-      this.previewContent = '';
-    }
-  }
+    },
+  },
 };
 </script>
 
@@ -118,17 +118,14 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
 }
 
-#editor {
+textarea {
   width: 100%;
-  height: calc(100vh - 120px);
+  height: calc(100vh - 60px);
   font-size: 16px;
   padding: 10px;
   box-sizing: border-box;
-  border: 1px solid #ddd;
   overflow-y: auto;
-  font-family: Arial, sans-serif;
 }
 </style>
