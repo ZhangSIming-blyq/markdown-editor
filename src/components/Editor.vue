@@ -1,101 +1,134 @@
 <template>
-    <div class="editor">
-      <div class="file-list">
-        <DirectoryTree :tree="directoryTree" @file-selected="editFile" />
-      </div>
-      <div class="markdown-editor" v-if="selectedFile">
-        <h2>Editing: {{ selectedFile.name }}</h2>
-        <textarea v-model="fileContent"></textarea>
-      </div>
-      <div class="markdown-editor" v-else>
-        <h2>Select a file to edit</h2>
-      </div>
+  <div class="editor">
+    <!-- 目录选择 -->
+    <input type="file" webkitdirectory @change="handleFileSelect" />
+    <div class="file-list">
+      <DirectoryTree :tree="directoryTree" @file-selected="editFile" />
     </div>
-  </template>
-  
-  <script>
-  import DirectoryTree from './DirectoryTree.vue';
-  
-  export default {
-    components: {
-      DirectoryTree
+    <div class="markdown-editor" v-if="selectedFile">
+      <div class="editor-header">
+        <h2>Editing: {{ selectedFile.name }}</h2>
+        <button @click="closeFile">Close</button>
+      </div>
+      <div
+        id="editor"
+        contenteditable="true"
+        @input="renderMarkdown"
+        v-html="previewContent"
+        ref="editor"
+      ></div>
+    </div>
+    <div class="markdown-editor" v-else>
+      <h2>Select a file to edit</h2>
+    </div>
+  </div>
+</template>
+
+<script>
+import DirectoryTree from './DirectoryTree.vue';
+import markdownit from 'markdown-it';
+
+export default {
+  components: { DirectoryTree },
+  data() {
+    return {
+      directoryTree: [],
+      selectedFile: null,
+      fileContent: '',
+      previewContent: '',
+      markdown: markdownit(),
+    };
+  },
+  methods: {
+    handleFileSelect(event) {
+      const files = Array.from(event.target.files).filter(file => file.name.endsWith('.md'));
+      this.directoryTree = this.buildTree(files);
     },
-    data() {
-      return {
-        directoryTree: [],
-        selectedFile: null,
-        fileContent: ''
-      };
-    },
-    methods: {
-      editFile(file) {
+    editFile(file) {
+      if (file instanceof File || file instanceof Blob) {
         this.selectedFile = file;
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onload = e => {
           this.fileContent = e.target.result;
+          this.previewContent = this.markdown.render(this.fileContent);
         };
         reader.readAsText(file);
-      },
-      buildTree(files) {
-        const tree = [];
-        files.forEach(file => {
-          const parts = file.path.split('/');
-          let currentLevel = tree;
-          parts.forEach((part, index) => {
-            const existingPath = currentLevel.find(item => item.name === part);
-            if (existingPath) {
-              currentLevel = existingPath.children;
-            } else {
-              const newPart = {
-                name: part,
-                path: parts.slice(0, index + 1).join('/'),
-                type: index === parts.length - 1 ? 'file' : 'directory',
-                children: [],
-                expanded: false,
-                file: index === parts.length - 1 ? file.file : null
-              };
-              currentLevel.push(newPart);
-              if (newPart.type === 'directory') {
-                currentLevel = newPart.children;
-              }
-            }
-          });
-        });
-        return tree;
+      } else {
+        console.error("Selected item is not a valid file.");
       }
     },
-    created() {
-      if (this.$route.query.files) {
-        const files = JSON.parse(this.$route.query.files);
-        this.directoryTree = this.buildTree(files);
-      }
+    buildTree(files) {
+      const tree = [];
+      files.forEach(file => {
+        const parts = file.webkitRelativePath.split('/'); // 使用相对路径
+        let currentLevel = tree;
+        parts.forEach((part, index) => {
+          let existingPath = currentLevel.find(item => item.name === part);
+          if (!existingPath) {
+            existingPath = {
+              name: part,
+              path: parts.slice(0, index + 1).join('/'),
+              type: index === parts.length - 1 ? 'file' : 'directory',
+              children: [],
+              expanded: false,
+              file: index === parts.length - 1 ? file : null // 确保文件对象
+            };
+            currentLevel.push(existingPath);
+          }
+          if (existingPath.type === 'directory') {
+            currentLevel = existingPath.children;
+          }
+        });
+      });
+      return tree;
+    },
+    renderMarkdown() {
+      const editor = this.$refs.editor;
+      this.fileContent = editor.innerText || editor.textContent;
+      this.previewContent = this.markdown.render(this.fileContent);
+    },
+    closeFile() {
+      this.selectedFile = null;
+      this.fileContent = '';
+      this.previewContent = '';
     }
-  };
-  </script>
-  
-  <style scoped>
-  .editor {
-    display: flex;
-    height: 100vh;
   }
-  
-  .file-list {
-    width: 20%; /* 1/5 */
-    border-right: 1px solid #ccc;
-    padding: 20px;
-    overflow-y: auto;
-  }
-  
-  .markdown-editor {
-    width: 80%; /* 4/5 */
-    padding: 20px;
-  }
-  
-  textarea {
-    width: 100%;
-    height: calc(100vh - 60px);
-    font-size: 16px;
-    padding: 10px;
-    box-sizing: border-box;
-  }
-  </style>
+};
+</script>
+
+<style scoped>
+.editor {
+  display: flex;
+  height: 100vh;
+}
+
+.file-list {
+  width: 20%;
+  border-right: 1px solid #ccc;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.markdown-editor {
+  width: 80%;
+  padding: 20px;
+}
+
+.editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+#editor {
+  width: 100%;
+  height: calc(100vh - 120px);
+  font-size: 16px;
+  padding: 10px;
+  box-sizing: border-box;
+  border: 1px solid #ddd;
+  overflow-y: auto;
+  font-family: Arial, sans-serif;
+}
+</style>
