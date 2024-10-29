@@ -21,22 +21,20 @@ export default {
   props: {
     tree: {
       type: Array,
-      required: true
-    }
+      required: true,
+    },
   },
   methods: {
     handleItemClick(item) {
       if (item.type === 'directory') {
         item.expanded = !item.expanded;
-      } else if (!item.file.name.endsWith('.md')) {
-        console.error('The selected file is not a valid markdown file.', item.file);
-      } else if (item.file && (item.file instanceof File || item.file instanceof Blob)) {
-        this.$emit('file-selected', item.file);
+      } else if (item.name.endsWith('.md')) { // Only emit for .md files
+        this.$emit('file-selected', item.path);
       } else {
-        console.error("The selected item is not a valid file.", item.file);
+        console.warn('Only .md files can be opened. Selected file:', item.name);
       }
-    }
-  }
+    },
+  },
 };
 </script>
 
@@ -45,7 +43,6 @@ ul {
   list-style-type: none;
   padding-left: 20px;
 }
-
 li {
   cursor: pointer;
 }

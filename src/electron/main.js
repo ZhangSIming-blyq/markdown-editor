@@ -1,6 +1,9 @@
+// main.js
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+
+let basePath = '';
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -13,29 +16,61 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
-
-  win.loadURL('http://localhost:8080'); // 启动开发时加载的 URL
+  win.loadURL('http://localhost:8080');
 }
 
 app.on('ready', createWindow);
 
-// 处理文件读取
-ipcMain.handle('open-file', async () => {
-  const { filePaths } = await dialog.showOpenDialog({ properties: ['openFile'] });
-  if (filePaths.length > 0) {
-    const fileContent = fs.readFileSync(filePaths[0], 'utf-8');
-    return { content: fileContent, path: filePaths[0] };
+ipcMain.handle('select-directory', async () => {
+  const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
+  if (!result.canceled && result.filePaths.length > 0) {
+    basePath = result.filePaths[0];
+    console.log("Base path set to:", basePath); // Debug log
+    return basePath;
   }
-  return { content: '', path: '' };
+  return null;
 });
 
-// 处理文件保存
-ipcMain.handle('save-file', async (event, filePath, content) => {
-  try {
-    fs.writeFileSync(filePath, content, 'utf-8');
-    return 'File saved successfully';
-  } catch (error) {
-    console.error('Error saving file:', error);
-    return 'Failed to save file';
+ipcMain.handle('read-directory', async () => {
+  console.log("Reading directory from base path:", basePath); // Debugging log
+  function buildTree(dirPath) {
+    const tree = [];
+    const items = fs.readdirSync(dirPath, { withFileTypes: true });
+
+    items.forEach((item) => {
+      const fullPath = path.join(dirPath, item.name);
+      const node = {
+        name: item.name,
+        path: fullPath.replace(basePath, ''), // relative path for Vue
+        type: item.isDirectory() ? 'directory' : 'file',
+        children: [],
+      };
+
+      if (item.isDirectory()) {
+        node.children = buildTree(fullPath); // recursive for directories
+      }
+      tree.push(node);
+    });
+    return tree;
   }
+
+  return buildTree(basePath);
+});
+
+ipcMain.handle('read-file', async (event, filePath) => {
+  const absolutePath = path.join(basePath, filePath);
+  console.log("Attempting to read file at absolute path:", absolutePath); // Debugging log
+  if (!fs.existsSync(absolutePath)) {
+    console.error("File not found:", absolutePath); // Error log for missing file
+    throw new Error("File not found");
+  }
+  const content = fs.readFileSync(absolutePath, 'utf-8');
+  return content;
+});
+
+ipcMain.handle('write-file', async (event, filePath, content) => {
+  const absolutePath = path.join(basePath, filePath);
+  console.log("Attempting to write to file at absolute path:", absolutePath); // Debugging log
+  fs.writeFileSync(absolutePath, content, 'utf-8');
+  return 'File saved successfully';
 });

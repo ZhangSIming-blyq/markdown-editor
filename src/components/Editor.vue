@@ -33,6 +33,7 @@ export default {
       directoryTree: [],
       selectedFile: null,
       fileContent: '',
+      filePath: '', // Store file path for saving
     };
   },
   methods: {
@@ -67,31 +68,58 @@ export default {
       });
       return tree;
     },
-    editFile(file) {
-      if (file instanceof File) {
-        this.selectedFile = file;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          this.fileContent = e.target.result;
-        };
-        reader.readAsText(file);
-      } else {
-        console.error('Selected item is not a valid file.');
+    async editFile(filePath) {
+  console.log("File path received in editFile:", filePath); // Debug log
+
+  if (filePath) {
+    this.selectedFile = filePath; // Update selectedFile to hold the path as a string
+    this.filePath = filePath;
+
+    if (window.electronAPI && window.electronAPI.readFile) {
+      try {
+        console.log("Calling readFile in electronAPI with path:", this.filePath); // Debugging line
+        const content = await window.electronAPI.readFile(this.filePath);
+        this.fileContent = content;
+        console.log("File content loaded successfully."); // Debugging line
+      } catch (error) {
+        console.error("Error reading file in editFile:", error);
       }
-    },
+    } else {
+      console.error("electronAPI or readFile is not defined");
+    }
+  } else {
+    console.error("File path is not valid or undefined");
+  }
+},
+
     autoSave() {
-      if (this.selectedFile) {
-        // Only keep the content in memory as a backup for now
-        localStorage.setItem(this.selectedFile.name, this.fileContent);
+      if (this.filePath && window.electronAPI && window.electronAPI.writeFile) {
+        window.electronAPI.writeFile(this.filePath, this.fileContent).catch((error) => {
+          console.error('Auto-save failed:', error);
+        });
       }
     },
     closeEditor() {
-      // Attempt to save the latest content back to the original file
-      this.autoSave();  // Save the latest changes to memory/localStorage as a backup
-
-      this.selectedFile = null;
-      this.fileContent = '';
+      if (this.filePath && window.electronAPI && window.electronAPI.writeFile) {
+        window.electronAPI.writeFile(this.filePath, this.fileContent)
+          .then(() => {
+            this.selectedFile = null;
+            this.fileContent = '';
+            this.filePath = '';
+          })
+          .catch((error) => {
+            console.error('Failed to save file on close:', error);
+          });
+      }
     },
+  },
+  mounted() {
+    // Set up an interval for regular auto-saving every 30 seconds
+    this.autoSaveInterval = setInterval(this.autoSave, 30000); // Adjust interval as needed
+  },
+  beforeDestroy() {
+    // Clear interval when component is destroyed
+    clearInterval(this.autoSaveInterval);
   },
 };
 </script>
