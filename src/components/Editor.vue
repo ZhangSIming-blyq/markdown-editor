@@ -9,11 +9,7 @@
         <h2>Editing: {{ selectedFile.name }}</h2>
         <button @click="closeEditor">Close</button>
       </div>
-      <textarea
-        v-model="fileContent"
-        ref="textArea"
-        @input="autoSave"
-      ></textarea>
+      <textarea v-model="fileContent" ref="textArea" @input="autoSave"></textarea>
     </div>
     <div v-else class="markdown-editor">
       <h2>Select a file to edit</h2>
@@ -34,11 +30,19 @@ export default {
       selectedFile: null,
       fileContent: '',
       filePath: '', // Store file path for saving
+      baseDirectory: '', // Store base directory
     };
   },
   methods: {
     handleFileUpload(event) {
       const files = Array.from(event.target.files);
+
+      this.baseDirectory = "/Users/simingzhang/siming"
+
+      console.log("Base directory set to:", this.baseDirectory);
+
+      // Send base directory to main process
+      window.electronAPI.setBaseDirectory(this.baseDirectory);
       this.directoryTree = this.buildTree(files);
     },
     buildTree(files) {
@@ -68,56 +72,65 @@ export default {
       });
       return tree;
     },
-    async editFile(filePath) {
-  console.log("File path received in editFile:", filePath); // Debug log
+    async editFile(item) {
+      console.log("Item clicked:", item); // Log the entire item object
 
-  if (filePath) {
-    this.selectedFile = filePath; // Update selectedFile to hold the path as a string
-    this.filePath = filePath;
-
-    if (window.electronAPI && window.electronAPI.readFile) {
-      try {
-        console.log("Calling readFile in electronAPI with path:", this.filePath); // Debugging line
-        const content = await window.electronAPI.readFile(this.filePath);
-        this.fileContent = content;
-        console.log("File content loaded successfully."); // Debugging line
-      } catch (error) {
-        console.error("Error reading file in editFile:", error);
-      }
-    } else {
-      console.error("electronAPI or readFile is not defined");
-    }
-  } else {
-    console.error("File path is not valid or undefined");
-  }
-},
-
-    autoSave() {
-      if (this.filePath && window.electronAPI && window.electronAPI.writeFile) {
-        window.electronAPI.writeFile(this.filePath, this.fileContent).catch((error) => {
-          console.error('Auto-save failed:', error);
-        });
+      if (item && typeof item.path === 'string') {
+        if (item.type === 'directory') {
+          item.expanded = !item.expanded;
+        } else if (item.path.endsWith('.md')) { // Only allow .md files
+          console.log("Emitting relative path for file:", item.path);
+          try {
+            const content = await window.electronAPI.readFile(item.path);
+            this.fileContent = content;
+            this.selectedFile = item;
+            this.filePath = item.path;
+            console.log("File content loaded successfully.");
+          } catch (error) {
+            console.error("Error reading file:", error);
+          }
+        } else {
+          console.log("Selected item is not a markdown file:", item.path);
+        }
+      } else {
+        console.error("Invalid item or path:", item);
       }
     },
-    closeEditor() {
-      if (this.filePath && window.electronAPI && window.electronAPI.writeFile) {
-        window.electronAPI.writeFile(this.filePath, this.fileContent)
-          .then(() => {
-            this.selectedFile = null;
-            this.fileContent = '';
-            this.filePath = '';
-          })
-          .catch((error) => {
-            console.error('Failed to save file on close:', error);
-          });
+    autoSave() {
+      if (!this.filePath) {
+        console.error('No file path set. Cannot auto-save.');
+        return;
       }
+
+      console.log('Attempting to auto-save file:', this.filePath);
+      console.log('File content:', this.fileContent);
+
+      window.electronAPI.writeFile(this.filePath, this.fileContent)
+        .then(() => {
+          console.log('Auto-save successful.');
+        })
+        .catch((error) => {
+          console.error('Auto-save failed:', error);
+        });
+    },
+    closeEditor() {
+      console.log('Closing editor and attempting to auto-save.');
+      this.autoSave(); // Ensure auto-save before closing
+      this.selectedFile = null;
+      this.fileContent = '';
+      this.filePath = '';
     },
   },
   mounted() {
+    console.log('Setting up auto-save interval.');
     // Set up an interval for regular auto-saving every 30 seconds
-    this.autoSaveInterval = setInterval(this.autoSave, 30000); // Adjust interval as needed
+    this.autoSaveInterval = setInterval(() => {
+      console.log('Auto-save interval triggered.');
+      this.autoSave();
+    }, 30000); // Adjust interval as needed
   },
   beforeDestroy() {
+    console.log('Clearing auto-save interval.');
     // Clear interval when component is destroyed
     clearInterval(this.autoSaveInterval);
   },

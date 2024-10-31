@@ -29,7 +29,7 @@ export default {
       if (item.type === 'directory') {
         item.expanded = !item.expanded;
       } else if (item.name.endsWith('.md')) { // Only emit for .md files
-        this.$emit('file-selected', item.path);
+        this.$emit('file-selected', item);
       } else {
         console.warn('Only .md files can be opened. Selected file:', item.name);
       }
